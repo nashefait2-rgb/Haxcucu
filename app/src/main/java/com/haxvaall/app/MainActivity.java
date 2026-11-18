@@ -8,6 +8,7 @@ import android.graphics.Paint;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
@@ -17,12 +18,20 @@ import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.FrameLayout;
+import android.widget.LinearLayout;
+import android.widget.TextView;
+
+import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
 
 public class MainActivity extends Activity {
 
     WebView web;
     Stick stick;
     Kick kick;
+    TextView zoomBtn;
+    String hxJs = "";
+    int zoom = 0;
     final Handler h = new Handler(Looper.getMainLooper());
     final boolean[] dirs = new boolean[4];
     final String[] names = {"ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"};
@@ -51,6 +60,20 @@ public class MainActivity extends Activity {
         + "return false;}"
         + "return f(document);})()";
 
+    String loadAsset(String name) {
+        try {
+            InputStream in = getAssets().open(name);
+            ByteArrayOutputStream o = new ByteArrayOutputStream();
+            byte[] b = new byte[4096];
+            int r;
+            while ((r = in.read(b)) > 0) o.write(b, 0, r);
+            in.close();
+            return o.toString("UTF-8");
+        } catch (Exception e) {
+            return "";
+        }
+    }
+
     void key(String k, String c, int kc, boolean down) {
         String js = "(function(){var t='" + (down ? "keydown" : "keyup") + "';var ds=[];"
             + "function col(d){ds.push(d);var f=d.getElementsByTagName('iframe');"
@@ -66,6 +89,16 @@ public class MainActivity extends Activity {
         key(names[i], names[i], kcs[i], down);
     }
 
+    void zoomStep() {
+        zoom = zoom % 4 + 1;
+        final String k = String.valueOf(zoom);
+        final int kc = 48 + zoom;
+        key(k, "Digit" + k, kc, true);
+        h.postDelayed(new Runnable() {
+            @Override public void run() { key(k, "Digit" + k, kc, false); }
+        }, 60);
+    }
+
     void setControls(boolean in) {
         int v = in ? View.VISIBLE : View.GONE;
         if (stick.getVisibility() != v) {
@@ -76,7 +109,23 @@ public class MainActivity extends Activity {
             }
             stick.setVisibility(v);
             kick.setVisibility(v);
+            zoomBtn.setVisibility(v);
         }
+    }
+
+    TextView hudBtn(String t, View.OnClickListener l) {
+        float d = getResources().getDisplayMetrics().density;
+        TextView b = new TextView(this);
+        b.setText(t);
+        b.setTextSize(TypedValue.COMPLEX_UNIT_SP, 20);
+        b.setTextColor(0xFFFFFFFF);
+        b.setGravity(Gravity.CENTER);
+        b.setBackgroundColor(0x99000000);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams((int) (40 * d), (int) (40 * d));
+        lp.setMargins(0, 0, (int) (6 * d), 0);
+        b.setLayoutParams(lp);
+        b.setOnClickListener(l);
+        return b;
     }
 
     class Stick extends View {
@@ -145,6 +194,7 @@ public class MainActivity extends Activity {
     @Override protected void onCreate(Bundle b) {
         super.onCreate(b);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        hxJs = loadAsset("hx.js");
 
         FrameLayout root = new FrameLayout(this);
         web = new WebView(this);
@@ -158,6 +208,7 @@ public class MainActivity extends Activity {
         web.setWebViewClient(new WebViewClient() {
             @Override public void onPageFinished(WebView v, String url) {
                 v.evaluateJavascript(HIDE_ADS, null);
+                v.evaluateJavascript(hxJs, null);
             }
         });
         web.loadUrl("https://www.haxball.com/play");
@@ -180,6 +231,24 @@ public class MainActivity extends Activity {
         kick = new Kick(this);
         kick.setVisibility(View.GONE);
         root.addView(kick, l2);
+
+        LinearLayout bar = new LinearLayout(this);
+        bar.setOrientation(LinearLayout.HORIZONTAL);
+        zoomBtn = hudBtn("\uD83D\uDD0D", new View.OnClickListener() {
+            @Override public void onClick(View v) { zoomStep(); }
+        });
+        zoomBtn.setVisibility(View.GONE);
+        bar.addView(zoomBtn);
+        bar.addView(hudBtn("\uD83D\uDCAC", new View.OnClickListener() {
+            @Override public void onClick(View v) { web.evaluateJavascript("window.hxChat&&hxChat()", null); }
+        }));
+        bar.addView(hudBtn("\uD83C\uDFA8", new View.OnClickListener() {
+            @Override public void onClick(View v) { web.evaluateJavascript("window.hxTheme&&hxTheme()", null); }
+        }));
+        FrameLayout.LayoutParams l3 = new FrameLayout.LayoutParams(
+            -2, -2, Gravity.TOP | Gravity.LEFT);
+        l3.setMargins((int) (6 * d), (int) (6 * d), 0, 0);
+        root.addView(bar, l3);
 
         setContentView(root);
 
