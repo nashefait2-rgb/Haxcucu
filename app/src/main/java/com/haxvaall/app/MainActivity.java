@@ -6,12 +6,13 @@ import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.view.Gravity;
-import android.view.InputDevice;
-import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.WindowManager;
+import android.webkit.ValueCallback;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
@@ -20,11 +21,12 @@ import android.widget.FrameLayout;
 public class MainActivity extends Activity {
 
     WebView web;
+    Stick stick;
+    Kick kick;
+    final Handler h = new Handler(Looper.getMainLooper());
     final boolean[] dirs = new boolean[4];
-    final int[] codes = {
-        KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT,
-        KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN
-    };
+    final String[] names = {"ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"};
+    final int[] kcs = {37, 39, 38, 40};
 
     static final String HIDE_ADS =
         "(function(){"
@@ -40,12 +42,41 @@ public class MainActivity extends Activity {
         + "},1000);"
         + "})();";
 
-    void key(int code, boolean down) {
-        web.requestFocus();
-        long t = System.currentTimeMillis();
-        web.dispatchKeyEvent(new KeyEvent(t, t,
-            down ? KeyEvent.ACTION_DOWN : KeyEvent.ACTION_UP,
-            code, 0, 0, -1, 0, 0, InputDevice.SOURCE_KEYBOARD));
+    static final String CHECK =
+        "(function(){function f(d){"
+        + "var c=d.getElementsByTagName('canvas');"
+        + "for(var i=0;i<c.length;i++){if(c[i].offsetWidth>100&&c[i].offsetHeight>100)return true;}"
+        + "var fr=d.getElementsByTagName('iframe');"
+        + "for(var j=0;j<fr.length;j++){try{if(fr[j].contentDocument&&f(fr[j].contentDocument))return true;}catch(e){}}"
+        + "return false;}"
+        + "return f(document);})()";
+
+    void key(String k, String c, int kc, boolean down) {
+        String js = "(function(){var t='" + (down ? "keydown" : "keyup") + "';var ds=[];"
+            + "function col(d){ds.push(d);var f=d.getElementsByTagName('iframe');"
+            + "for(var i=0;i<f.length;i++){try{if(f[i].contentDocument)col(f[i].contentDocument);}catch(e){}}}"
+            + "col(document);"
+            + "ds.forEach(function(d){var o=d.body||d.documentElement;"
+            + "var ev=new KeyboardEvent(t,{key:'" + k + "',code:'" + c + "',keyCode:" + kc + ",which:" + kc
+            + ",bubbles:true,cancelable:true});o.dispatchEvent(ev);});})();";
+        web.evaluateJavascript(js, null);
+    }
+
+    void dirKey(int i, boolean down) {
+        key(names[i], names[i], kcs[i], down);
+    }
+
+    void setControls(boolean in) {
+        int v = in ? View.VISIBLE : View.GONE;
+        if (stick.getVisibility() != v) {
+            if (!in) {
+                for (int i = 0; i < 4; i++) {
+                    if (dirs[i]) { dirs[i] = false; dirKey(i, false); }
+                }
+            }
+            stick.setVisibility(v);
+            kick.setVisibility(v);
+        }
     }
 
     class Stick extends View {
@@ -79,7 +110,7 @@ public class MainActivity extends Activity {
                 n[2] = dy < -th; n[3] = dy > th;
             }
             for (int i = 0; i < 4; i++) {
-                if (n[i] != dirs[i]) { dirs[i] = n[i]; key(codes[i], n[i]); }
+                if (n[i] != dirs[i]) { dirs[i] = n[i]; dirKey(i, n[i]); }
             }
             invalidate();
             return true;
@@ -101,9 +132,9 @@ public class MainActivity extends Activity {
         @Override public boolean onTouchEvent(MotionEvent e) {
             int a = e.getActionMasked();
             if (a == MotionEvent.ACTION_DOWN && !down) {
-                down = true; key(KeyEvent.KEYCODE_X, true);
+                down = true; key("x", "KeyX", 88, true);
             } else if (a == MotionEvent.ACTION_UP || a == MotionEvent.ACTION_CANCEL) {
-                down = false; key(KeyEvent.KEYCODE_X, false);
+                down = false; key("x", "KeyX", 88, false);
             }
             invalidate();
             return true;
@@ -117,8 +148,6 @@ public class MainActivity extends Activity {
 
         FrameLayout root = new FrameLayout(this);
         web = new WebView(this);
-        web.setFocusable(true);
-        web.setFocusableInTouchMode(true);
         WebSettings s = web.getSettings();
         s.setJavaScriptEnabled(true);
         s.setDomStorageEnabled(true);
@@ -129,7 +158,6 @@ public class MainActivity extends Activity {
         web.setWebViewClient(new WebViewClient() {
             @Override public void onPageFinished(WebView v, String url) {
                 v.evaluateJavascript(HIDE_ADS, null);
-                v.requestFocus();
             }
         });
         web.loadUrl("https://www.haxball.com/play");
@@ -141,16 +169,30 @@ public class MainActivity extends Activity {
         FrameLayout.LayoutParams l1 = new FrameLayout.LayoutParams(
             ss, ss, Gravity.BOTTOM | Gravity.LEFT);
         l1.setMargins((int) (30 * d), 0, 0, (int) (30 * d));
-        root.addView(new Stick(this), l1);
+        stick = new Stick(this);
+        stick.setVisibility(View.GONE);
+        root.addView(stick, l1);
 
         int ks = (int) (90 * d);
         FrameLayout.LayoutParams l2 = new FrameLayout.LayoutParams(
             ks, ks, Gravity.BOTTOM | Gravity.RIGHT);
         l2.setMargins(0, 0, (int) (40 * d), (int) (40 * d));
-        root.addView(new Kick(this), l2);
+        kick = new Kick(this);
+        kick.setVisibility(View.GONE);
+        root.addView(kick, l2);
 
         setContentView(root);
-        web.requestFocus();
+
+        h.postDelayed(new Runnable() {
+            @Override public void run() {
+                web.evaluateJavascript(CHECK, new ValueCallback<String>() {
+                    @Override public void onReceiveValue(String v) {
+                        setControls("true".equals(v));
+                    }
+                });
+                h.postDelayed(this, 1000);
+            }
+        }, 1000);
     }
 
     @Override public void onWindowFocusChanged(boolean f) {
