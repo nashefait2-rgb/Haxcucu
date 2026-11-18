@@ -7,6 +7,7 @@ import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.os.Bundle;
 import android.view.Gravity;
+import android.view.InputDevice;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.View;
@@ -25,10 +26,26 @@ public class MainActivity extends Activity {
         KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN
     };
 
+    static final String HIDE_ADS =
+        "(function(){"
+        + "var st=document.createElement('style');"
+        + "st.textContent='.rightbar,[class*=rightbar],[id*=rightbar],[class*=sidebar]{display:none!important}';"
+        + "document.head.appendChild(st);"
+        + "setInterval(function(){"
+        + "var f=document.getElementsByTagName('iframe');"
+        + "for(var i=0;i<f.length;i++){"
+        + "var s=f[i].src||'';"
+        + "if(s&&s.indexOf('haxball')<0){f[i].style.display='none';}"
+        + "}"
+        + "},1000);"
+        + "})();";
+
     void key(int code, boolean down) {
+        web.requestFocus();
         long t = System.currentTimeMillis();
         web.dispatchKeyEvent(new KeyEvent(t, t,
-            down ? KeyEvent.ACTION_DOWN : KeyEvent.ACTION_UP, code, 0));
+            down ? KeyEvent.ACTION_DOWN : KeyEvent.ACTION_UP,
+            code, 0, 0, -1, 0, 0, InputDevice.SOURCE_KEYBOARD));
     }
 
     class Stick extends View {
@@ -100,6 +117,8 @@ public class MainActivity extends Activity {
 
         FrameLayout root = new FrameLayout(this);
         web = new WebView(this);
+        web.setFocusable(true);
+        web.setFocusableInTouchMode(true);
         WebSettings s = web.getSettings();
         s.setJavaScriptEnabled(true);
         s.setDomStorageEnabled(true);
@@ -107,7 +126,12 @@ public class MainActivity extends Activity {
         s.setLoadWithOverviewMode(true);
         s.setMediaPlaybackRequiresUserGesture(false);
         s.setUserAgentString("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
-        web.setWebViewClient(new WebViewClient());
+        web.setWebViewClient(new WebViewClient() {
+            @Override public void onPageFinished(WebView v, String url) {
+                v.evaluateJavascript(HIDE_ADS, null);
+                v.requestFocus();
+            }
+        });
         web.loadUrl("https://www.haxball.com/play");
         root.addView(web, new FrameLayout.LayoutParams(-1, -1));
 
@@ -126,6 +150,7 @@ public class MainActivity extends Activity {
         root.addView(new Kick(this), l2);
 
         setContentView(root);
+        web.requestFocus();
     }
 
     @Override public void onWindowFocusChanged(boolean f) {
